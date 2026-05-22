@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coxswain Precision Simulator</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #222;
+            color: #fff;
+            font-family: sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow: hidden;
+        }
+        #ui-panel {
+            width: 800px;
+            padding: 10px;
+            background: #333;
+            display: flex;
+            justify-content: space-between;
+            box-sizing: border-box;
+        }
+        .hud-item {
+            font-size: 14px;
+        }
+        .hud-item span {
+            font-weight: bold;
+            color: #00ffcc;
+        }
+        canvas {
+            border: 2px solid #555;
+            background-color: #1a3c5a;
+        }
+        #controls-guide {
+            width: 800px;
+            padding: 10px;
+            background: #2a2a2a;
+            font-size: 12px;
+            line-height: 1.4;
+            box-sizing: border-box;
+        }
+        kbd {
+            background: #555;
+            padding: 2px 5px;
+            border-radius: 3px;
+            box-shadow: 0 1px 0 #000;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-panel">
+        <div class="hud-item">Oar Status: <span id="hud-oars">EXTENDED</span></div>
+        <div class="hud-item">Speed: <span id="hud-speed">0.0</span> kn</div>
+        <div class="hud-item">Heading: <span id="hud-heading">0</span>°</div>
+        <div class="hud-item">Status: <span id="hud-status" style="color:white;">Navigate to the Dock!</span></div>
+    </div>
+
+    <canvas id="simCanvas" width="800" height="600"></canvas>
+
+    <div id="controls-guide">
+        <strong>Controls:</strong><br>
+        <kbd>W</kbd> Row Both Sides (Forward) | <kbd>Q</kbd> Row Port Only (Turn Right) | <kbd>E</kbd> Row Starboard Only (Turn Left)<br>
+        <kbd>A</kbd> Hold Water Port (Hard Brake/Pivot Left) | <kbd>D</kbd> Hold Water Starboard (Hard Brake/Pivot Right)<br>
+        <kbd>Spacebar</kbd> **Trail Oars** (Tuck oars flat against the hull to clear narrow bridge gaps or slide into docks!)
+    </div>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Game Entities State
+        const boat = {
+            x: 400,
+            y: 500,
+            angle: -Math.PI / 2, // Facing up
+            speed: 0,
+            angularVelocity: 0,
+            length: 90,
+            width: 10,
+            oarSpan: 35,
+            oarsTrailed: false,
+            maxSpeed: 3,
+            drag: 0.98,
+            angularDrag: 0.90
+        };
+
+        // Obstacles (X, Y, Width, Height, Type)
+        const obstacles = [
+            { x: 0, y: 380, w: 320, h: 40, type: 'bridge' },
+            { x: 480, y: 380, w: 320, h: 40, type: 'bridge' }, // 160px gap in middle
+            { x: 100, y: 100, w: 30, h: 180, type: 'dock' }   // Dock on the left
+        ];
+
+        // Input state
+        const keys = {};
+        window.addEventListener('keydown', e => { 
+            if(e.code === 'Space') {
+                boat.oarsTrailed = !boat.oarsTrailed;
+                e.preventDefault();
+            }
+            keys[e.code] = true; 
+        });
+        window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+        function checkCollision(px, py, radius) {
+            for (let obs of obstacles) {
+                if (px > obs.x && px < obs.x + obs.w && py > obs.y && py < obs.y + obs.h) {
+                    return obs.type;
+                }
+            }
+            return null;
+        }
+
+        function update() {
+            // Propulsion logic
+            let forceForward = 0;
+            let forceRot = 0;
+            const rowPower = 0.15;
+            const steerPower = 0.008;
+
+            if (!boat.oarsTrailed) {
+                if (keys['KeyW']) { // Both
+                    forceForward += rowPower;
+                }
+                if (keys['KeyQ']) { // Port only -> turns boat right
+                    forceForward += rowPower * 0.4;
+                    forceRot += steerPower;
+                }
+                if (keys['KeyE']) { // Starboard only -> turns boat left
+                    forceForward += rowPower * 0.4;
+                    forceRot -= steerPower;
+                }
+                if (keys['KeyA']) { // Hold water port -> drag on left pivots left
+                    forceForward *= 0.5;
+                    forceRot -= steerPower * 1.5;
+                }
+                if (keys['KeyD']) { // Hold water starboard -> drag on right pivots right
+                    forceForward *= 0.5;
+                    forceRot += steerPower * 1.5;
+                }
+            }
+
+            // Apply physics
+            boat.speed += forceForward;
+            if (boat.speed > boat.maxSpeed) boat.speed = boat.maxSpeed;
+            boat.speed *= boat.drag;
+
+            boat.angularVelocity += forceRot;
+            boat.angularVelocity *= boat.angularDrag;
+
+            boat.angle += boat.angularVelocity;
+            boat.x += Math.cos(boat.angle) * boat.speed;
+            boat.y += Math.sin(boat.angle) * boat.speed;
+
+            // Collision Detection Points (Bow, Stern, and Tips of Oars if extended)
+            const sinA = Math.sin(boat.angle);
+            const cosA = Math.cos(boat.angle);
+
+            const bowX = boat.x + cosA * (boat.length / 2);
+            const bowY = boat.y + sinA * (boat.length / 2);
+            const sternX = boat.x - cosA * (boat.length / 2);
+            const sternY = boat.y - sinA * (boat.length / 2);
+
+            let hit = checkCollision(bowX, bowY) || checkCollision(sternX, sternY);
+
+            if (!boat.oarsTrailed && !hit) {
+                // Check oar tips if they aren't tucked in
+                const leftOarX = boat.x + Math.cos(boat.angle - Math.PI/2) * boat.oarSpan;
+                const leftOarY = boat.y + Math.sin(boat.angle - Math.PI/2) * boat.oarSpan;
+                const rightOarX = boat.x + Math.cos(boat.angle + Math.PI/2) * boat.oarSpan;
+                const rightOarY = boat.y + Math.sin(boat.angle + Math.PI/2) * boat.oarSpan;
+                
+                hit = checkCollision(leftOarX, leftOarY) || checkCollision(rightOarX, rightOarY);
+            }
+
+            // Update HUD
+            document.getElementById('hud-oars').innerText = boat.oarsTrailed ? "TRAILED (FLAT)" : "EXTENDED";
+            document.getElementById('hud-oars').style.color = boat.oarsTrailed ? "#ffcc00" : "#00ffcc";
+            document.getElementById('hud-speed').innerText = (boat.speed * 5).toFixed(1);
+            let deg = Math.round((boat.angle * 180 / Math.PI) + 90);
+            if (deg < 0) deg += 360;
+            document.getElementById('hud-heading').innerText = deg % 360;
+
+            const statusEl = document.getElementById('hud-status');
+            if (hit === 'bridge') {
+                statusEl.innerText = "CRASH! Oars or hull hit the bridge!";
+                statusEl.style.color = "#ff3333";
+                boat.speed = 0;
+            } else if (hit === 'dock') {
+                if (boat.speed * 5 < 1.5 && boat.oarsTrailed) {
+                    statusEl.innerText = "SUCCESS! Perfect safe dock landing.";
+                    statusEl.style.color = "#33ff33";
+                } else if (!boat.oarsTrailed) {
+                    statusEl.innerText = "DAMAGE! Oars smashed into the dock!";
+                    statusEl.style.color = "#ff3333";
+                } else {
+                    statusEl.innerText = "CRASH! Approached dock too fast!";
+                    statusEl.style.color = "#ff9900";
+                }
+                boat.speed = 0;
+            }
+        }
+
+        function drawTopDown(top, left, width, height) {
+            ctx.save();
+            // Scissor region to split screen cleanly
+            ctx.beginPath();
+            ctx.rect(left, top, width, height);
+            ctx.clip();
+
+            // Background Water
+            ctx.fillStyle = '#1a3c5a';
+            ctx.fillRect(left, top, width, height);
+
+            // Draw Obstacles
+            obstacles.forEach(obs => {
+                ctx.fillStyle = obs.type === 'bridge' ? '#555555' : '#8B5A2B';
+                ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
+                // Grid markings on bridge
+                if(obs.type === 'bridge') {
+                    ctx.strokeStyle = '#444';
+                    ctx.strokeRect(obs.x, obs.y, obs.w, obs.h);
+                }
+            });
+
+            // Draw Boat
+            ctx.translate(boat.x, boat.y);
+            ctx.rotate(boat.angle);
+
+            // Oars
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 3;
+            if (!boat.oarsTrailed) {
+                // Port oars (Left relative to boat facing right)
+                for(let i = -20; i <= 20; i += 15) {
+                    ctx.beginPath(); ctx.moveTo(i, -boat.width/2); ctx.lineTo(i, -boat.oarSpan); ctx.stroke();
+                    ctx.fillStyle = '#ff3333'; ctx.fillRect(i-2, -boat.oarSpan-2, 4, 6); // Blade
+                }
+                // Starboard oars (Right relative to boat)
+                for(let i = -20; i <= 20; i += 15) {
+                    ctx.beginPath(); ctx.moveTo(i, boat.width/2); ctx.lineTo(i, boat.oarSpan); ctx.stroke();
+                    ctx.fillStyle = '#3333ff'; ctx.fillRect(i-2, boat.oarSpan-4, 4, 6); // Blade
+                }
+            } else {
+                // Trailed Oars representation flat along hull
+                ctx.fillStyle = '#ffaa00';
+                ctx.fillRect(-30, -boat.width/2 - 2, 60, 2);
+                ctx.fillRect(-30, boat.width/2, 60, 2);
+            }
+
+            // Hull
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.moveTo(-boat.length/2, -boat.width/2);
+            ctx.lineTo(boat.length/2 - 15, -boat.width/2);
+            ctx.lineTo(boat.length/2, 0); // Bow ball point
+            ctx.lineTo(boat.length/2 - 15, boat.width/2);
+            ctx.lineTo(-boat.length/2, boat.width/2);
+            ctx.closePath();
+            ctx.fill();
+
+            // Coxswain position marker (Stern is back left)
+            ctx.fillStyle = '#00ffcc';
+            ctx.beginPath(); ctx.arc(-boat.length/2 + 10, 0, 3, 0, Math.PI*2); ctx.fill();
+
+            ctx.restore();
+
+            // Draw Label
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(left + 10, top + 10, 160, 25);
+            ctx.fillStyle = '#fff';
+            ctx.font = '12px sans-serif';
+            ctx.fillText("TOP-DOWN VIEW", left + 20, top + 26);
+        }
+
+        function drawCoxView(top, left, width, height) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(left, top, width, height);
+            ctx.clip();
+
+            // Sky and Water Horizon
+            ctx.fillStyle = '#2b5c8f'; // Water
+            ctx.fillRect(left, top, width, height);
+            ctx.fillStyle = '#4a90e2'; // Sky
+            ctx.fillRect(left, top, width, height / 3);
+
+            // Horizon line
+            ctx.strokeStyle = '#357abd';
+            ctx.beginPath(); ctx.moveTo(left, top + height/3); ctx.lineTo(left+width, top + height/3); ctx.stroke();
+
+            // Calculate relative angles to obstacles to project them onto 1D horizon
+            obstacles.forEach(obs => {
+                // Center of obstacle
+                let obsCX = obs.x + obs.w/2;
+                let obsCY = obs.y + obs.h/2;
+
+                let dx = obsCX - boat.x;
+                let dy = obsCY - boat.y;
+                let dist = Math.sqrt(dx*dx + dy*dy);
+
+                // Angle relative to boat heading
+                let relAngle = Math.atan2(dy, dx) - boat.angle;
+                // Normalize angle
+                while (relAngle < -Math.PI) relAngle += Math.PI * 2;
+                while (relAngle > Math.PI) relAngle -= Math.PI * 2;
+
+                // Screen projection mapping if in field of view
+                if (Math.abs(relAngle) < Math.PI / 3) { 
+                    let screenX = (left + width / 2) + (relAngle / (Math.PI / 3)) * (width / 2);
+                    let sizeY = Math.max(10, 3000 / dist); // Basic pseudo-3D scaling
+                    let sizeX = (obs.w / dist) * 400;
+
+                    ctx.fillStyle = obs.type === 'bridge' ? '#444' : '#6d4c41';
+                    ctx.fillRect(screenX - sizeX/2, (top + height/3) - sizeY, sizeX, sizeY * 2);
+                }
+            });
+
+            // Draw the V-shaped stern/crew canvas fading into distance
+            ctx.fillStyle = '#dddddd';
+            ctx.beginPath();
+            ctx.moveTo(left + width/2 - 40, top + height);
+            ctx.lineTo(left + width/2 + 40, top + height);
+            ctx.lineTo(left + width/2, top + height/3 + 20); // Vanishing point of bow
+            ctx.closePath();
+            ctx.fill();
+
+            // Center stern line
+            ctx.strokeStyle = '#aaaaaa';
+            ctx.beginPath(); ctx.moveTo(left+width/2, top+height); ctx.lineTo(left+width/2, top + height/3 + 20); ctx.stroke();
+
+            ctx.restore();
+
+            // Draw Label
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(left + 10, top + 10, 160, 25);
+            ctx.fillStyle = '#fff';
+            ctx.font = '12px sans-serif';
+            ctx.fillText("COXSWAIN VIEW", left + 20, top + 26);
+        }
+
+        function gameLoop() {
+            update();
+
+            // Clear Canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Render Split View
+            drawTopDown(0, 0, 800, 350);
+            
+            // Divider line
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = 4;
+            ctx.beginPath(); ctx.moveTo(0, 350); ctx.lineTo(800, 350); ctx.stroke();
+            
+            drawCoxView(352, 0, 800, 248);
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Initialize Loop
+        gameLoop();
+    </script>
+</body>
+</html>
