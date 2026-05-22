@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>v1.1.0 Coxswain Precision Simulator</title>
+    <title>v1.1.1 Coxswain Precision Simulator</title>
     <style>
         body {
             margin: 0;
@@ -112,7 +112,7 @@
     </div>
 
     <script>
-        const appVersion = 'v1.1.0';
+        const appVersion = 'v1.1.1';
         const canvas = document.getElementById('simCanvas');
         const ctx = canvas.getContext('2d');
         const width = canvas.width;
@@ -141,16 +141,7 @@
         ];
 
         const obstacles = [
-            { x: 0, y: 0, w: 60, h: height, type: 'wall' },
-            { x: width - 60, y: 0, w: 60, h: height, type: 'wall' },
-            { x: 0, y: 0, w: width, h: 60, type: 'wall' },
-            { x: 0, y: topHeight - 40, w: 240, h: 320, type: 'dock' },
-            { x: 0, y: topHeight + 280, w: 240, h: 140, type: 'dock' },
-            { x: 60, y: topHeight, w: 180, h: 180, type: 'dock' },
-            { x: 140, y: 60, w: 680, h: 52, type: 'bridge' },
-            { x: 140, y: 112, w: 264, h: 34, type: 'bridge' },
-            { x: 560, y: 112, w: 264, h: 34, type: 'bridge' },
-            { x: 380, y: 112, w: 200, h: 20, type: 'arch' }
+            { x: 20, y: topHeight + 100, w: 120, h: 180, type: 'dock' }
         ];
 
         const keys = {};
