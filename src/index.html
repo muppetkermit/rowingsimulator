@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>v1 Coxswain Precision Simulator</title>
+    <title>v1.1.0 Coxswain Precision Simulator</title>
     <style>
         body {
             margin: 0;
@@ -112,6 +112,7 @@
     </div>
 
     <script>
+        const appVersion = 'v1.1.0';
         const canvas = document.getElementById('simCanvas');
         const ctx = canvas.getContext('2d');
         const width = canvas.width;
@@ -431,61 +432,73 @@
             ctx.restore();
         }
 
-        function drawCoxView() {
-            ctx.save();
-            ctx.translate(0, topHeight);
-            ctx.clearRect(0, 0, width, bottomHeight);
-            ctx.fillStyle = '#26486f';
-            ctx.fillRect(0, 0, width, bottomHeight);
-            ctx.fillStyle = '#5a92ca';
-            ctx.fillRect(0, 0, width, bottomHeight * 0.42);
-            ctx.strokeStyle = '#5390c8';
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.moveTo(0, bottomHeight * 0.42);
-            ctx.lineTo(width, bottomHeight * 0.42);
-            ctx.stroke();
+        function drawFullMap() {
+            const mapHeight = bottomHeight;
+            const mapWidth = width;
+            const scale = Math.min(mapWidth / width, mapHeight / height);
+            const mapDisplayWidth = width * scale;
+            const mapDisplayHeight = height * scale;
+            const offsetX = (mapWidth - mapDisplayWidth) / 2;
+            const offsetY = topHeight + (mapHeight - mapDisplayHeight) / 2;
 
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+            // Background
+            ctx.fillStyle = '#1a3a52';
+            ctx.fillRect(0, topHeight, width, bottomHeight);
+
+            // Draw map area
+            ctx.translate(offsetX, offsetY);
+            ctx.scale(scale, scale);
+
+            // Water
+            ctx.fillStyle = '#10213a';
+            ctx.fillRect(0, 0, width, height);
+
+            // Obstacles
             obstacles.forEach(obs => {
-                const centerX = obs.x + obs.w * 0.5;
-                const centerY = obs.y + obs.h * 0.5;
-                const dx = centerX - boat.x;
-                const dy = centerY - boat.y;
-                const distance = Math.sqrt(dx * dx + dy * dy);
-                let relAngle = Math.atan2(dy, dx) - boat.angle;
-                while (relAngle < -Math.PI) relAngle += Math.PI * 2;
-                while (relAngle > Math.PI) relAngle -= Math.PI * 2;
-                if (Math.abs(relAngle) < Math.PI / 3 && distance > 1) {
-                    const screenX = width / 2 + (relAngle / (Math.PI / 3)) * (width / 2 - 90);
-                    const scale = Math.max(18, 1400 / distance);
-                    const blockW = Math.min(260, (obs.w / distance) * 280);
-                    const blockH = Math.min(190, (obs.h / distance) * 240);
-                    ctx.fillStyle = obs.type === 'dock' ? '#8a5c31' : obs.type === 'bridge' ? '#4a4a4a' : obs.type === 'arch' ? '#26486f' : '#2b2b2b';
-                    ctx.fillRect(screenX - blockW / 2, bottomHeight * 0.42 - blockH, blockW, blockH);
+                if (obs.type === 'dock') {
+                    ctx.fillStyle = '#8a5c31';
+                } else if (obs.type === 'bridge') {
+                    ctx.fillStyle = '#4a4a4a';
+                } else if (obs.type === 'arch') {
+                    ctx.fillStyle = '#5d7ea8';
+                } else {
+                    ctx.fillStyle = '#2b3644';
                 }
+                ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
             });
 
-            ctx.fillStyle = '#e9e9e9';
+            // Boat
+            ctx.save();
+            ctx.translate(boat.x, boat.y);
+            ctx.rotate(boat.angle + Math.PI / 2);
+            ctx.fillStyle = '#ffeb3b';
+            ctx.fillRect(-boat.width / 2, -boat.length / 2, boat.width, boat.length);
+            ctx.strokeStyle = '#fff44f';
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(-boat.width / 2, -boat.length / 2, boat.width, boat.length);
+            // Bow indicator (triangle at front)
+            ctx.fillStyle = '#ff6b6b';
             ctx.beginPath();
-            ctx.moveTo(width / 2 - 32, bottomHeight);
-            ctx.lineTo(width / 2 + 32, bottomHeight);
-            ctx.lineTo(width / 2 + 3, bottomHeight * 0.42 + 20);
-            ctx.lineTo(width / 2 - 3, bottomHeight * 0.42 + 20);
+            ctx.moveTo(0, -boat.length / 2 - 8);
+            ctx.lineTo(-6, -boat.length / 2 + 3);
+            ctx.lineTo(6, -boat.length / 2 + 3);
             ctx.closePath();
             ctx.fill();
-            ctx.strokeStyle = '#a0a0a0';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(width / 2, bottomHeight);
-            ctx.lineTo(width / 2, bottomHeight * 0.42 + 20);
-            ctx.stroke();
+            ctx.restore();
 
+            ctx.restore();
+
+            // Title
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.fillStyle = 'rgba(0,0,0,0.35)';
-            ctx.fillRect(16, 16, 150, 26);
+            ctx.fillRect(16, topHeight + 16, 100, 26);
             ctx.fillStyle = '#fff';
             ctx.font = '14px sans-serif';
-            ctx.fillText('COXSWAIN VIEW', 22, 34);
-            ctx.restore();
+            ctx.fillText('FULL MAP', 22, topHeight + 34);
         }
 
         function updateHud() {
@@ -508,7 +521,7 @@
             drawBackground();
             drawWideMiniTopDown();
             drawMiniTopDown();
-            drawCoxView();
+            drawFullMap();
             updateHud();
             requestAnimationFrame(gameLoop);
         }
