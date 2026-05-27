@@ -1,534 +1,174 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>v1.1.1 Coxswain Precision Simulator</title>
-    <style>
-        body {
-            margin: 0;
-            background: #101820;
-            color: #f2f2f2;
-            font-family: Inter, system-ui, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-        #wrapper {
-            max-width: 980px;
-            width: 100%;
-            padding: 12px;
-            box-sizing: border-box;
-        }
-        #hud {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-        .hud-card {
-            background: rgba(255,255,255,0.06);
-            border: 1px solid rgba(255,255,255,0.12);
-            padding: 12px 14px;
-            border-radius: 12px;
-            min-height: 54px;
-        }
-        .hud-card strong {
-            display: block;
-            font-size: 12px;
-            color: #9bb3c5;
-            margin-bottom: 6px;
-        }
-        .hud-card span {
-            font-size: 18px;
-            font-weight: 700;
-            color: #ffffff;
-        }
-        #simCanvas {
-            width: 100%;
-            border-radius: 16px;
-            background: #0f2138;
-            box-shadow: 0 20px 70px rgba(0, 0, 0, 0.35);
-            display: block;
-        }
-        #controls {
-            margin-top: 10px;
-            display: grid;
-            gap: 8px;
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.12);
-            border-radius: 12px;
-            padding: 14px;
-        }
-        .control-row {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-            align-items: center;
-        }
-        kbd {
-            background: #1e2b42;
-            color: #e8f1ff;
-            border-radius: 6px;
-            padding: 8px 10px;
-            border: 1px solid rgba(255,255,255,0.12);
-            box-shadow: inset 0 -1px 0 rgba(255,255,255,0.08);
-            font-size: 0.95rem;
-        }
-        #status-log {
-            margin-top: 10px;
-            background: rgba(255,255,255,0.04);
-            border: 1px solid rgba(255,255,255,0.12);
-            border-radius: 12px;
-            padding: 12px;
-            min-height: 90px;
-        }
-        #status-log div {
-            margin-bottom: 6px;
-            line-height: 1.5;
-        }
-        #status-log div:last-child {
-            margin-bottom: 0;
-        }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Rowing Simulator — Top-down</title>
+  <style>
+    html,body { height:100%; margin:0; }
+    body { display:flex; align-items:center; justify-content:center; background:#0b1220; color:#e6f0ff; font-family:Inter, system-ui, sans-serif; }
+    #sim { width:960px; height:720px; position:relative; }
+    canvas { display:block; background:#0b2030; border-radius:10px; box-shadow:0 10px 40px rgba(0,0,0,0.6); }
+    .hud {
+      position:absolute; left:12px; top:12px; background:rgba(0,0,0,0.35); padding:8px 12px; border-radius:8px; font-size:13px;
+    }
+    .instr { position:absolute; left:12px; bottom:12px; background:rgba(0,0,0,0.28); padding:8px 12px; border-radius:8px; font-size:13px; }
+  </style>
 </head>
 <body>
-    <div id="wrapper">
-        <div id="hud">
-            <div class="hud-card"><strong>Oar Status</strong><span id="hud-oars">EXTENDED</span></div>
-            <div class="hud-card"><strong>Speed</strong><span id="hud-speed">0.0 kn</span></div>
-            <div class="hud-card"><strong>Heading</strong><span id="hud-heading">000°</span></div>
-            <div class="hud-card"><strong>Current Status</strong><span id="hud-status">Navigate toward the dock.</span></div>
-        </div>
-        <canvas id="simCanvas" width="960" height="720"></canvas>
-        <div id="controls">
-                <div class="control-row"><strong>Rowing:</strong> <kbd>W</kbd> both oars forward · <kbd>A</kbd> steer left · <kbd>D</kbd> steer right</div>
-                <div class="control-row"><strong>Clearance:</strong> <kbd>Space</kbd> trail oars flat to narrow your profile and glide.</div>
-                <div class="control-row"><strong>Speed:</strong> <input id="speedControl" type="range" min="0" max="3.6" step="0.05"> <span id="speedValue"></span> · <strong>Use A/D to steer</strong></div>
-                <div class="control-row"><strong>Settings:</strong> Turn strength <input id="turnStrength" type="range" min="0.2" max="1.0" step="0.05"> <span id="turnStrengthValue"></span> · Row strength <input id="rowStrength" type="range" min="0.6" max="1.4" step="0.05"> <span id="rowStrengthValue"></span></div>
-            <div class="control-row">Dock with <strong>oars trailed</strong> at <strong>&lt; 1.5 kn</strong> for success. Avoid contact with walls, dock or bridge when oars are extended.</div>
-        </div>
-        <div id="status-log"></div>
-    </div>
+  <div id="sim">
+    <canvas id="c" width="960" height="720"></canvas>
+    <div class="hud" id="hud">Speed: <span id="hud-speed">0.0</span> • Heading: <span id="hud-heading">0°</span></div>
+    <div class="instr">Controls: <strong>W</strong>=forward, <strong>S</strong>=reverse, <strong>A</strong>/<strong>D</strong>=steer — feel floaty on water</div>
+  </div>
 
-    <script>
-        const appVersion = 'v1.1.1';
-        const canvas = document.getElementById('simCanvas');
-        const ctx = canvas.getContext('2d');
-        const width = canvas.width;
-        const height = canvas.height;
-        const topHeight = height * 0.5;
-        const bottomHeight = height * 0.5;
+  <script>
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
 
-        const boat = {
-            x: width * 0.55,
-            y: topHeight + 220,
-            angle: -Math.PI / 2,
-            speed: 0,
-            angularVelocity: 0,
-            length: 110,
-            width: 20,
-            oarSpan: 52,
-            oarsTrailed: false,
-            maxSpeed: 3.6,
-            drag: 0.987,
-            angularDrag: 0.92
-        };
+    const hudSpeed = document.getElementById('hud-speed');
+    const hudHeading = document.getElementById('hud-heading');
 
-        const statusMessages = [
-            'Begin by steering through the bridge arch and then dock safely.',
-            'Trail oars before landing to reduce your footprint.'
-        ];
+    const keys = {};
+    window.addEventListener('keydown', e => { if (['KeyW','KeyA','KeyS','KeyD','Space'].includes(e.code)) e.preventDefault(); keys[e.code]=true; });
+    window.addEventListener('keyup', e => { keys[e.code]=false; });
 
-        const obstacles = [
-            { x: 20, y: topHeight + 100, w: 120, h: 180, type: 'dock' }
-        ];
+    // Boat state
+    const boat = {
+      x: W*0.5,
+      y: H*0.6,
+      vx: 0,
+      vy: 0,
+      angle: -Math.PI/2, // facing up
+      omega: 0,
+      length: 48,
+      width: 12,
+      mass: 1.2,
+      inertia: 1.0,
+      maxThrust: 0.12,
+      maxRudder: 0.9
+    };
 
-        const keys = {};
-        const logElement = document.getElementById('status-log');
+    // simple river bounds (vertical band)
+    const river = { x: W*0.18, w: W*0.64 };
 
-        const settingsKey = 'rowing-coxswain-settings';
-        const defaultSettings = {
-            turnStrength: 0.5,
-            rowStrength: 1.0
-        };
+    // helper
+    function clamp(a,min,max){ return Math.max(min,Math.min(max,a)); }
+    function angDiff(a,b){ let d=a-b; while(d>Math.PI) d-=2*Math.PI; while(d<-Math.PI) d+=2*Math.PI; return d; }
 
-        const settings = loadSettings();
+    let lastT = performance.now();
+    function step(now){
+      const dt = Math.min(0.05, (now - lastT)/1000); lastT = now;
 
-        function loadSettings() {
-            try {
-                const stored = JSON.parse(localStorage.getItem(settingsKey));
-                return stored && typeof stored.turnStrength === 'number' && typeof stored.rowStrength === 'number'
-                    ? stored
-                    : { ...defaultSettings };
-            } catch {
-                return { ...defaultSettings };
-            }
-        }
+      // Controls -> forces
+      let thrust = 0;
+      if (keys.KeyW) thrust += boat.maxThrust;
+      if (keys.KeyS) thrust -= boat.maxThrust*0.6;
 
-        function saveSettings() {
-            localStorage.setItem(settingsKey, JSON.stringify(settings));
-        }
+      // thrust applied in boat forward direction
+      const fx = Math.cos(boat.angle) * thrust;
+      const fy = Math.sin(boat.angle) * thrust;
 
-        function updateSettingsUI() {
-            const turnSlider = document.getElementById('turnStrength');
-            const rowSlider = document.getElementById('rowStrength');
-            const turnValue = document.getElementById('turnStrengthValue');
-            const rowValue = document.getElementById('rowStrengthValue');
-            turnSlider.value = settings.turnStrength;
-            rowSlider.value = settings.rowStrength;
-            turnValue.textContent = settings.turnStrength.toFixed(2);
-            rowValue.textContent = settings.rowStrength.toFixed(2);
+      // water drag (linear + quadratic) to feel floaty
+      const kv = 0.9; // linear drag coefficient (per second)
+      const kq = 0.6; // quadratic
+      const axDrag = (-kv*boat.vx - kq*boat.vx*Math.abs(boat.vx));
+      const ayDrag = (-kv*boat.vy - kq*boat.vy*Math.abs(boat.vy));
 
-            turnSlider.addEventListener('input', e => {
-                settings.turnStrength = Number(e.target.value);
-                turnValue.textContent = settings.turnStrength.toFixed(2);
-                saveSettings();
-            });
-            rowSlider.addEventListener('input', e => {
-                settings.rowStrength = Number(e.target.value);
-                rowValue.textContent = settings.rowStrength.toFixed(2);
-                saveSettings();
-            });
-        }
+      // acceleration
+      const ax = (fx)/boat.mass + axDrag;
+      const ay = (fy)/boat.mass + ayDrag;
+      boat.vx += ax * dt;
+      boat.vy += ay * dt;
 
-        function addLog(message) {
-            statusMessages.unshift(message);
-            if (statusMessages.length > 5) statusMessages.pop();
-            logElement.innerHTML = statusMessages.map(line => `<div>${line}</div>`).join('');
-        }
+      // steering (apply torque)
+      let rudder = 0;
+      if (keys.KeyA) rudder -= 1;
+      if (keys.KeyD) rudder += 1;
 
-        function speedKnots() {
-            return boat.speed * 4.2;
-        }
+      // torque from rudder plus passive alignment to velocity (water guiding the hull)
+      const velSpeed = Math.hypot(boat.vx, boat.vy) + 1e-6;
+      const velDir = Math.atan2(boat.vy, boat.vx);
+      const alignStrength = 0.8; // how strongly hull aligns with movement (higher = more snappy alignment)
+      const angError = angDiff(velDir, boat.angle);
+      const alignTorque = angError * alignStrength * 0.2 * Math.min(1, velSpeed/2);
 
-        window.addEventListener('keydown', e => {
-            if (['KeyW','KeyA','KeyD','Space'].includes(e.code)) {
-                e.preventDefault();
-            }
-            if (e.code === 'Space' && !keys[e.code]) {
-                boat.oarsTrailed = !boat.oarsTrailed;
-                addLog(boat.oarsTrailed ? 'Oars trailed: narrow hull, no rowing power.' : 'Oars extended: propulsion available.');
-            }
-            keys[e.code] = true;
-        });
+      const torque = (rudder * boat.maxRudder * 0.6) + alignTorque;
+      const alpha = torque / boat.inertia;
+      boat.omega += alpha * dt;
+      // angular damping
+      boat.omega *= clamp(1 - 1.8*dt, 0.01, 1);
+      boat.angle += boat.omega * dt;
 
-        window.addEventListener('keyup', e => {
-            keys[e.code] = false;
-        });
+      // integrate position
+      boat.x += boat.vx * dt * 60; // scale to feel responsive
+      boat.y += boat.vy * dt * 60;
 
-        function pointInRect(x, y, rect) {
-            return x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h;
-        }
+      // keep inside canvas and gently bounce off banks
+      const leftBank = river.x;
+      const rightBank = river.x + river.w;
+      if (boat.x < leftBank + 8) { boat.x = leftBank + 8; boat.vx *= -0.2; }
+      if (boat.x > rightBank - 8) { boat.x = rightBank - 8; boat.vx *= -0.2; }
+      if (boat.y < 20) { boat.y = 20; boat.vy *= -0.2; }
+      if (boat.y > H-20) { boat.y = H-20; boat.vy *= -0.2; }
 
-        function checkCollision(points) {
-            for (const obs of obstacles) {
-                for (const point of points) {
-                    if (pointInRect(point.x, point.y, obs)) {
-                        return obs.type;
-                    }
-                }
-            }
-            return null;
-        }
+      draw();
+      requestAnimationFrame(step);
+    }
 
-        function updateBoat() {
-            const forwardPower = 0.16 * settings.rowStrength;
-            const turnPower = 0.012 * settings.turnStrength;
-            let thrust = 0;
-            let torque = 0;
+    function draw(){
+      // background
+      ctx.clearRect(0,0,W,H);
+      // banks
+      ctx.fillStyle = '#10202a';
+      ctx.fillRect(0,0,W,H);
+      // river gradient
+      const g = ctx.createLinearGradient(0,0,0,H);
+      g.addColorStop(0,'#0f3a5a');
+      g.addColorStop(0.5,'#08324c');
+      g.addColorStop(1,'#072838');
+      ctx.fillStyle = g;
+      ctx.fillRect(river.x,0,river.w,H);
 
-            if (!boat.oarsTrailed) {
-                if (keys.KeyW) thrust += forwardPower;
-                // Use A/D to steer (A = left, D = right)
-                if (keys.KeyA) { thrust += forwardPower * 0.4; torque += turnPower; }
-                if (keys.KeyD) { thrust += forwardPower * 0.4; torque -= turnPower; }
-            }
+      // subtle current lines
+      ctx.strokeStyle = 'rgba(255,255,255,0.02)'; ctx.lineWidth = 1;
+      for(let i=0;i<12;i++){
+        const t = (i/12 + (boat.y/2000))%1;
+        ctx.beginPath();
+        ctx.moveTo(river.x + Math.sin(t*8)*12, i*(H/12));
+        ctx.lineTo(river.x + river.w + Math.sin(t*8+1.2)*12, i*(H/12)+10);
+        ctx.stroke();
+      }
 
-            if (!boat.oarsTrailed) {
-                boat.speed += thrust;
-            }
-            boat.speed = Math.max(0, Math.min(boat.maxSpeed, boat.speed));
-            boat.speed *= boat.drag;
-            boat.angularVelocity += torque;
-            boat.angularVelocity *= boat.angularDrag;
-            boat.angle += boat.angularVelocity;
-            boat.x += Math.cos(boat.angle) * boat.speed;
-            boat.y += Math.sin(boat.angle) * boat.speed;
+      // draw boat
+      ctx.save();
+      ctx.translate(boat.x, boat.y);
+      ctx.rotate(boat.angle);
+      // hull
+      ctx.fillStyle = '#ffd86b';
+      ctx.beginPath();
+      ctx.moveTo(0, -boat.length*0.5);
+      ctx.lineTo(-boat.width, boat.length*0.3);
+      ctx.lineTo(boat.width, boat.length*0.3);
+      ctx.closePath();
+      ctx.fill();
+      // stroke
+      ctx.strokeStyle = '#222'; ctx.lineWidth = 1; ctx.stroke();
+      // oars (simple lines)
+      ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(-boat.width*1.6, 0); ctx.lineTo(-boat.width*3.2, 10); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(boat.width*1.6, 0); ctx.lineTo(boat.width*3.2, 10); ctx.stroke();
+      ctx.restore();
 
-            const forwardPoint = {
-                x: boat.x + Math.cos(boat.angle) * boat.length * 0.45,
-                y: boat.y + Math.sin(boat.angle) * boat.length * 0.45
-            };
-            const rearPoint = {
-                x: boat.x - Math.cos(boat.angle) * boat.length * 0.45,
-                y: boat.y - Math.sin(boat.angle) * boat.length * 0.45
-            };
-            const widen = boat.oarsTrailed ? 10 : boat.oarSpan + 12;
-            const leftOar = {
-                x: boat.x + Math.cos(boat.angle - Math.PI/2) * widen,
-                y: boat.y + Math.sin(boat.angle - Math.PI/2) * widen
-            };
-            const rightOar = {
-                x: boat.x + Math.cos(boat.angle + Math.PI/2) * widen,
-                y: boat.y + Math.sin(boat.angle + Math.PI/2) * widen
-            };
+      // HUD
+      const speed = Math.hypot(boat.vx, boat.vy);
+      hudSpeed.textContent = speed.toFixed(2);
+      hudHeading.textContent = (Math.round((boat.angle*180/Math.PI+360)%360)) + '°';
+    }
 
-            const collisionType = checkCollision([forwardPoint, rearPoint, leftOar, rightOar]);
-            if (collisionType) {
-                if (collisionType === 'arch') {
-                    addLog('Crash: the bridge arch edge clipped your boat.');
-                } else if (collisionType === 'bridge') {
-                    addLog('Crash: hull or oars hit the bridge span.');
-                } else if (collisionType === 'dock') {
-                    if (boat.oarsTrailed && speedKnots() < 1.5) {
-                        addLog('Success: docked safely with trailed oars.');
-                    } else if (!boat.oarsTrailed) {
-                        addLog('Failure: oars struck the dock.');
-                    } else {
-                        addLog('Failure: docked too fast.');
-                    }
-                } else {
-                    addLog('Collision with obstacle.');
-                }
-                boat.speed = 0;
-                boat.angularVelocity *= 0.2;
-            }
-
-            if (boat.x < 80) boat.x = 80;
-            if (boat.x > width - 80) boat.x = width - 80;
-            if (boat.y < topHeight + 40) boat.y = topHeight + 40;
-            if (boat.y > height - 40) boat.y = height - 40;
-        }
-
-        function drawBackground() {
-            ctx.save();
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
-            ctx.clearRect(0, 0, width, height);
-            ctx.fillStyle = '#10213a';
-            ctx.fillRect(0, 0, width, height);
-            ctx.restore();
-        }
-
-        function drawWideMiniTopDown() {
-            const size = 100;
-            const left = 18;
-            const top = 18;
-            const viewSize = 380;
-            const viewCenterX = boat.x;
-            const viewCenterY = boat.y - 130;
-            const scale = size / viewSize;
-            const boatWidthPx = 10;
-            const boatHeightPx = 2;
-
-            ctx.save();
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
-            ctx.fillStyle = '#10213a';
-            ctx.fillRect(left, top, size, size);
-            ctx.strokeStyle = '#5d7ea8';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(left, top, size, size);
-
-            const mapX = x => left + (x - (viewCenterX - viewSize / 2)) * scale;
-            const mapY = y => top + (y - (viewCenterY - viewSize / 2)) * scale;
-
-            obstacles.forEach(obs => {
-                ctx.fillStyle = obs.type === 'dock' ? '#8a5c31' : obs.type === 'bridge' ? '#4a4a4a' : '#2b3644';
-                const x = mapX(obs.x);
-                const y = mapY(obs.y);
-                const w = obs.w * scale;
-                const h = obs.h * scale;
-                ctx.fillRect(x, y, w, h);
-                if (obs.type === 'arch') {
-                    ctx.fillStyle = '#10213a';
-                    ctx.fillRect(x, y, w, h);
-                }
-            });
-
-            const boatX = mapX(boat.x);
-            const boatY = mapY(boat.y);
-            ctx.save();
-            ctx.translate(boatX, boatY);
-            ctx.rotate(boat.angle);
-            ctx.fillStyle = '#f1f1f1';
-            ctx.fillRect(-boat.length * 0.18 * scale, -boatHeightPx, boatWidthPx, boatHeightPx * 2);
-            ctx.restore();
-
-            ctx.fillStyle = 'rgba(0,0,0,0.35)';
-            ctx.fillRect(left + 6, top + 6, 100 - 12, 18);
-            ctx.fillStyle = '#fff';
-            ctx.font = '12px sans-serif';
-            ctx.fillText('WIDE TOP VIEW', left + 10, top + 18);
-            ctx.restore();
-        }
-
-        function drawMiniTopDown() {
-            const size = 100;
-            const margin = 18;
-            const left = width - size - margin;
-            const top = margin;
-            const viewSize = 220;
-            const viewCenterX = boat.x;
-            const viewCenterY = boat.y - 24;
-            const scale = size / viewSize;
-            const boatWidthPx = 10;
-            const boatHeightPx = 2;
-
-            ctx.save();
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
-            ctx.fillStyle = '#10213a';
-            ctx.fillRect(left, top, size, size);
-            ctx.strokeStyle = '#5d7ea8';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(left, top, size, size);
-
-            const mapX = x => left + (x - (viewCenterX - viewSize / 2)) * scale;
-            const mapY = y => top + (y - (viewCenterY - viewSize / 2)) * scale;
-
-            obstacles.forEach(obs => {
-                ctx.fillStyle = obs.type === 'dock' ? '#8a5c31' : obs.type === 'bridge' ? '#4a4a4a' : '#2b3644';
-                const x = mapX(obs.x);
-                const y = mapY(obs.y);
-                const w = obs.w * scale;
-                const h = obs.h * scale;
-                ctx.fillRect(x, y, w, h);
-                if (obs.type === 'arch') {
-                    ctx.fillStyle = '#10213a';
-                    ctx.fillRect(x, y, w, h);
-                }
-            });
-
-            const boatX = mapX(boat.x);
-            const boatY = mapY(boat.y);
-            ctx.save();
-            ctx.translate(boatX, boatY);
-            ctx.rotate(boat.angle);
-            ctx.fillStyle = '#f1f1f1';
-            ctx.fillRect(-boat.length * 0.2 * scale, -boatHeightPx, boatWidthPx, boatHeightPx * 2);
-            ctx.restore();
-
-            ctx.fillStyle = 'rgba(0,0,0,0.35)';
-            ctx.fillRect(left + 6, top + 6, 88, 18);
-            ctx.fillStyle = '#fff';
-            ctx.font = '12px sans-serif';
-            ctx.fillText('MINI TOP VIEW', left + 10, top + 18);
-            ctx.restore();
-        }
-
-        function drawFullMap() {
-            const mapHeight = bottomHeight;
-            const mapWidth = width;
-            const scale = Math.min(mapWidth / width, mapHeight / height);
-            const mapDisplayWidth = width * scale;
-            const mapDisplayHeight = height * scale;
-            const offsetX = (mapWidth - mapDisplayWidth) / 2;
-            const offsetY = topHeight + (mapHeight - mapDisplayHeight) / 2;
-
-            ctx.save();
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
-
-            // Background
-            ctx.fillStyle = '#1a3a52';
-            ctx.fillRect(0, topHeight, width, bottomHeight);
-
-            // Draw map area
-            ctx.translate(offsetX, offsetY);
-            ctx.scale(scale, scale);
-
-            // Water
-            ctx.fillStyle = '#10213a';
-            ctx.fillRect(0, 0, width, height);
-
-            // Obstacles
-            obstacles.forEach(obs => {
-                if (obs.type === 'dock') {
-                    ctx.fillStyle = '#8a5c31';
-                } else if (obs.type === 'bridge') {
-                    ctx.fillStyle = '#4a4a4a';
-                } else if (obs.type === 'arch') {
-                    ctx.fillStyle = '#5d7ea8';
-                } else {
-                    ctx.fillStyle = '#2b3644';
-                }
-                ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
-            });
-
-            // Boat
-            ctx.save();
-            ctx.translate(boat.x, boat.y);
-            ctx.rotate(boat.angle + Math.PI / 2);
-            ctx.fillStyle = '#ffeb3b';
-            ctx.fillRect(-boat.width / 2, -boat.length / 2, boat.width, boat.length);
-            ctx.strokeStyle = '#fff44f';
-            ctx.lineWidth = 1.5;
-            ctx.strokeRect(-boat.width / 2, -boat.length / 2, boat.width, boat.length);
-            // Bow indicator (triangle at front)
-            ctx.fillStyle = '#ff6b6b';
-            ctx.beginPath();
-            ctx.moveTo(0, -boat.length / 2 - 8);
-            ctx.lineTo(-6, -boat.length / 2 + 3);
-            ctx.lineTo(6, -boat.length / 2 + 3);
-            ctx.closePath();
-            ctx.fill();
-            ctx.restore();
-
-            ctx.restore();
-
-            // Title
-            ctx.save();
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
-            ctx.fillStyle = 'rgba(0,0,0,0.35)';
-            ctx.fillRect(16, topHeight + 16, 100, 26);
-            ctx.fillStyle = '#fff';
-            ctx.font = '14px sans-serif';
-            ctx.fillText('FULL MAP', 22, topHeight + 34);
-        }
-
-        function updateHud() {
-            document.getElementById('hud-oars').textContent = boat.oarsTrailed ? 'TRAILED' : 'EXTENDED';
-            document.getElementById('hud-speed').textContent = speedKnots().toFixed(1) + ' kn';
-            const heading = Math.round((boat.angle * 180 / Math.PI + 450) % 360);
-            document.getElementById('hud-heading').textContent = heading.toString().padStart(3, '0') + '°';
-            const statusEl = document.getElementById('hud-status');
-            if (boat.oarsTrailed) {
-                statusEl.textContent = 'Trailing oars: narrow profile, glide slowly into the dock.';
-                statusEl.style.color = '#ffd166';
-            } else {
-                statusEl.textContent = 'Row carefully: use A/D to steer through the arch.';
-                statusEl.style.color = '#ffffff';
-            }
-        }
-
-        function gameLoop() {
-            updateBoat();
-            drawBackground();
-            drawWideMiniTopDown();
-            drawMiniTopDown();
-            drawFullMap();
-            updateHud();
-            requestAnimationFrame(gameLoop);
-        }
-
-        updateSettingsUI();
-
-        // Speed control slider (directly sets current speed for easy testing)
-        const speedControl = document.getElementById('speedControl');
-        const speedValue = document.getElementById('speedValue');
-        if (speedControl) {
-            speedControl.min = 0;
-            speedControl.max = boat.maxSpeed;
-            speedControl.step = 0.05;
-            speedControl.value = boat.speed;
-            speedValue.textContent = (boat.speed * 4.2).toFixed(1) + ' kn';
-            speedControl.addEventListener('input', e => {
-                boat.speed = Number(e.target.value);
-                speedValue.textContent = (boat.speed * 4.2).toFixed(1) + ' kn';
-            });
-        }
-
-        addLog(statusMessages[0]);
-        addLog(statusMessages[1]);
-        gameLoop();
-    </script>
+    // start
+    requestAnimationFrame(step);
+  </script>
 </body>
 </html>
