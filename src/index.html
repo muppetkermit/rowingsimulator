@@ -87,14 +87,8 @@
       if (keys.KeyA) rudder -= 1;
       if (keys.KeyD) rudder += 1;
 
-      // torque from rudder plus passive alignment to velocity (water guiding the hull)
-      const velSpeed = Math.hypot(boat.vx, boat.vy) + 1e-6;
-      const velDir = Math.atan2(boat.vy, boat.vx);
-      const alignStrength = 0.8; // how strongly hull aligns with movement (higher = more snappy alignment)
-      const angError = angDiff(velDir, boat.angle);
-      const alignTorque = angError * alignStrength * 0.2 * Math.min(1, velSpeed/2);
-
-      const torque = (rudder * boat.maxRudder * 0.6) + alignTorque;
+      // torque from rudder only—boat heading directly controls movement direction
+      const torque = rudder * boat.maxRudder * 0.8;
       const alpha = torque / boat.inertia;
       boat.omega += alpha * dt;
       // angular damping
