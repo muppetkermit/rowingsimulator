@@ -102,10 +102,10 @@
         </div>
         <canvas id="simCanvas" width="960" height="720"></canvas>
         <div id="controls">
-            <div class="control-row"><strong>Rowing:</strong> <kbd>W</kbd> both oars forward · <kbd>Q</kbd> port only → turn right · <kbd>E</kbd> starboard only → turn left</div>
-            <div class="control-row"><strong>Braking / Pivot:</strong> <kbd>A</kbd> hold water port (pivot left) · <kbd>D</kbd> hold water starboard (pivot right)</div>
-            <div class="control-row"><strong>Clearance:</strong> <kbd>Space</kbd> trail oars flat to narrow your profile and glide.</div>
-            <div class="control-row"><strong>Settings:</strong> Turn strength <input id="turnStrength" type="range" min="0.2" max="1.0" step="0.05"> <span id="turnStrengthValue"></span> · Row strength <input id="rowStrength" type="range" min="0.6" max="1.4" step="0.05"> <span id="rowStrengthValue"></span></div>
+                <div class="control-row"><strong>Rowing:</strong> <kbd>W</kbd> both oars forward · <kbd>A</kbd> steer left · <kbd>D</kbd> steer right</div>
+                <div class="control-row"><strong>Clearance:</strong> <kbd>Space</kbd> trail oars flat to narrow your profile and glide.</div>
+                <div class="control-row"><strong>Speed:</strong> <input id="speedControl" type="range" min="0" max="3.6" step="0.05"> <span id="speedValue"></span> · <strong>Use A/D to steer</strong></div>
+                <div class="control-row"><strong>Settings:</strong> Turn strength <input id="turnStrength" type="range" min="0.2" max="1.0" step="0.05"> <span id="turnStrengthValue"></span> · Row strength <input id="rowStrength" type="range" min="0.6" max="1.4" step="0.05"> <span id="rowStrengthValue"></span></div>
             <div class="control-row">Dock with <strong>oars trailed</strong> at <strong>&lt; 1.5 kn</strong> for success. Avoid contact with walls, dock or bridge when oars are extended.</div>
         </div>
         <div id="status-log"></div>
@@ -203,7 +203,7 @@
         }
 
         window.addEventListener('keydown', e => {
-            if (['KeyW','KeyQ','KeyE','KeyA','KeyD','Space'].includes(e.code)) {
+            if (['KeyW','KeyA','KeyD','Space'].includes(e.code)) {
                 e.preventDefault();
             }
             if (e.code === 'Space' && !keys[e.code]) {
@@ -235,22 +235,14 @@
         function updateBoat() {
             const forwardPower = 0.16 * settings.rowStrength;
             const turnPower = 0.012 * settings.turnStrength;
-            const brakeTorque = 0.018 * settings.turnStrength;
             let thrust = 0;
             let torque = 0;
 
             if (!boat.oarsTrailed) {
                 if (keys.KeyW) thrust += forwardPower;
-                if (keys.KeyQ) { thrust += forwardPower * 0.4; torque += turnPower; }
-                if (keys.KeyE) { thrust += forwardPower * 0.4; torque -= turnPower; }
-            }
-            if (keys.KeyA) {
-                torque -= brakeTorque;
-                boat.speed *= 0.86;
-            }
-            if (keys.KeyD) {
-                torque += brakeTorque;
-                boat.speed *= 0.86;
+                // Use A/D to steer (A = left, D = right)
+                if (keys.KeyA) { thrust += forwardPower * 0.4; torque += turnPower; }
+                if (keys.KeyD) { thrust += forwardPower * 0.4; torque -= turnPower; }
             }
 
             if (!boat.oarsTrailed) {
@@ -502,7 +494,7 @@
                 statusEl.textContent = 'Trailing oars: narrow profile, glide slowly into the dock.';
                 statusEl.style.color = '#ffd166';
             } else {
-                statusEl.textContent = 'Row carefully: use Q/E to steer through the arch.';
+                statusEl.textContent = 'Row carefully: use A/D to steer through the arch.';
                 statusEl.style.color = '#ffffff';
             }
         }
@@ -518,6 +510,22 @@
         }
 
         updateSettingsUI();
+
+        // Speed control slider (directly sets current speed for easy testing)
+        const speedControl = document.getElementById('speedControl');
+        const speedValue = document.getElementById('speedValue');
+        if (speedControl) {
+            speedControl.min = 0;
+            speedControl.max = boat.maxSpeed;
+            speedControl.step = 0.05;
+            speedControl.value = boat.speed;
+            speedValue.textContent = (boat.speed * 4.2).toFixed(1) + ' kn';
+            speedControl.addEventListener('input', e => {
+                boat.speed = Number(e.target.value);
+                speedValue.textContent = (boat.speed * 4.2).toFixed(1) + ' kn';
+            });
+        }
+
         addLog(statusMessages[0]);
         addLog(statusMessages[1]);
         gameLoop();
